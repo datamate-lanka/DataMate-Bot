@@ -2,7 +2,7 @@ const config = require('../config');
 const { cmd, commands } = require('../command');
 const { getSubz } = require("subz.lk");
 const axios = require('axios');
-const fs = require('fs');
+const fs = require('fs-extra');
 
 cmd({
     pattern: "subtitle",
