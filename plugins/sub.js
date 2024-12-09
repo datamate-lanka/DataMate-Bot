@@ -1,5 +1,5 @@
-const {cmd, commands} = require('../command');
-const {fetchJson} = require('../lib/functions');
+const config = require('../config')
+const {cmd , commands} = require('../command')
 const {fetchJson} = require('../lib/functions')
 
 cmd({
@@ -8,21 +8,12 @@ cmd({
     category: "main",
     filename: __filename
 },
-async(conn, mek, m, {from, quoted, body, isCmd, command, args, q, isGroup, sender, reply}) => {
-    try {
-        let data = await fetchJson(`https://cinerulk-fetch.mahagedara-co.workers.dev/?sub=${q}`);
-        if (Array.isArray(data) && data.length > 0) {
-            let message = "🎬 **Movie List** 🎬\n";
-            data.forEach((item, index) => {
-                message += `${index + 1}. ${item.title}\n`;
-            });
-            return reply(message);
-        } else {
-            return reply("⚠️ No subtitles found for your query.");
-        }
-    } catch (e) {
-        console.error(e);
-        return reply(`⚠️ Error: ${e.message}`);
-    }
-});
-
+async(conn, mek, m,{from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply}) => {
+try{
+  let data = await fetchJson(`https://cinerulk-fetch.mahagedara-co.workers.dev/?sub=${q}`)
+  return reply(`${data.data}`)
+    }catch(e){
+  console.log(e)
+  reply(`${e}`)
+}
+})
