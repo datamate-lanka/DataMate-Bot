@@ -1,50 +1,33 @@
 const config = require('../config');
 const { cmd, commands } = require('../command');
-const axios = require('axios');  // Ensure you have axios required here
-
-// Fixing the fetchJson function
-const fetchJson = async (url, options) => {
-    try {
-        options = options || {};  // Ensure options default to an empty object
-        const res = await axios({
-            method: 'GET',
-            url: url,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36'
-            },
-            ...options
-        });
-        return res.data;  // Return the JSON data directly
-    } catch (err) {
-        console.log(err);  // Log any error to the console for debugging
-        return { status: 'error', message: 'Something went wrong' };  // Return an error message
-    }
-};
+const { fetchJson } = require('../lib/functions');
 
 cmd({
-    pattern: "sub",
-    desc: "cineru.lk sub download",
-    category: "main",
-    filename: __filename
+  pattern: "sub",
+  desc: "Download subtitles from cineru.lk",
+  category: "main",
+  filename: __filename
 },
-async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply }) => {
-    try {
-        // Make sure the query parameter 'q' is passed correctly
-        if (!q) {
-            return reply('Please provide a subtitle query.');
-        }
-
-        // Fetch data from the API
-        let data = await fetchJson(`https://cinerulk-fetch.mahagedara-co.workers.dev/?sub=${q}`);
-        
-        // Check if data has the correct structure
-        if (data.status === 'success ✅') {
-            return reply(`${data.data}`);  // Reply with the subtitle information
-        } else {
-            return reply('No subtitle data found for your query.');
-        }
-    } catch (e) {
-        console.log(e);  // Log any error to the console
-        return reply('An error occurred while fetching the subtitle data.');
+async(conn, mek, m, { from, quoted, body, isCmd, command, args, q, reply }) => {
+  try {
+    if (!q) {
+      return reply("🔍 Please provide a movie name to search for subtitles.");
     }
+
+    const apiUrl = `https://cinerulk-fetch.mahagedara-co.workers.dev/?sub=${encodeURIComponent(q)}`;
+    const response = await fetchJson(apiUrl);
+
+    if (response && response.status === "success ✅" && response.data.length > 0) {
+      let message = "🎬 **Movie List** 🎬\n";
+      response.data.forEach((item, index) => {
+        message += `${index + 1}. ${item.title}\n🔗 ${item.url}\n\n`;
+      });
+      return reply(message);
+    } else {
+      return reply("⚠️ No subtitles found for your query.");
+    }
+  } catch (error) {
+    console.error(error);
+    return reply("❌ Error fetching subtitles. Please try again.");
+  }
 });
