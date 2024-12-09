@@ -18,7 +18,7 @@ const { sms,downloadMediaMessage } = require('./lib/msg')
 const axios = require('axios')
 const prefix = '.'
 
-const ownerNumber = ['94768480793']
+const ownerNumber = ['94785760531']
 
 //===================SESSION-AUTH============================
 // Removed session download logic, will use "session_file_here" directly
