@@ -1,13 +1,16 @@
 const { cmd, commands } = require('../command');
-const { fetchJson } = require('../lib/functions');
-const fetch = require('node-fetch'); // Assuming fetch is required for HTTP requests
+const axios = require('axios');
+const cheerio = require('cheerio');
+
+// Global cache to store search results
+const searchResultsCache = {};
 
 cmd({
     pattern: "sub",
     desc: "cineru.lk sub download",
     category: "main",
     filename: __filename
-}, async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply }) => {
+}, async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, reply }) => {
     try {
         // Perform search based on user query
         const keyword = q.trim();
@@ -15,27 +18,32 @@ cmd({
             return reply("🔍 Please provide a search term for subtitles.");
         }
 
-        const searchUrl = `https://cineru.lk/?s=${encodeURIComponent(keyword)}`;
-        const searchResponse = await fetch(searchUrl);
+        try {
+            const searchUrl = `https://cineru.lk/?s=${encodeURIComponent(keyword)}`;
+            const { data: searchHtml } = await axios.get(searchUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            });
 
-        if (searchResponse.ok) {
-            const searchHtml = await searchResponse.text();
             const results = extractTitles(searchHtml);
 
             if (results.length > 0) {
                 const numberedList = results.map((item, index) => `${index + 1}. ${sanitizeTitle(item.title)}`).join("\n");
                 await reply(`🎬 Search results:\n\n${numberedList}\n\nPlease reply with the movie number to get the subtitle download link.`);
-                // Store results for later access (use the session, e.g., in a map or database)
+                
+                // Store results for later access
                 searchResultsCache[from] = results;
             } else {
                 await reply("⚠️ No results found for your search.");
             }
-        } else {
+        } catch (searchError) {
+            console.error('Search Error:', searchError);
             await reply("❌ Search failed. Please try again.");
         }
     } catch (e) {
         console.log(e);
-        reply(`Error: ${e}`);
+        reply(`Error: ${e.message}`);
     }
 });
 
@@ -45,48 +53,61 @@ cmd({
     desc: "Download subtitle from cineru.lk",
     category: "main",
     filename: __filename
-}, async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply }) => {
+}, async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, reply }) => {
     try {
         const movieIndex = parseInt(args[0], 10) - 1;
 
         if (searchResultsCache[from] && searchResultsCache[from][movieIndex]) {
             const movie = searchResultsCache[from][movieIndex];
-            const result = await getPosterImageUrl(movie.url);
+            
+            try {
+                const result = await getPosterImageUrl(movie.url);
 
-            if (result && result.posterUrl) {
-                const movieName = await getMovieName(movie.url);
-                const responseText = `🌻 ${movieName} 🌼\n\n 🎉The provided subtitle corresponds to: ${result.descriptionText}\n\nSubtitles are sourced from cineru.lk.💕`;
+                if (result && result.posterUrl) {
+                    const movieName = await getMovieName(movie.url);
+                    const responseText = `🌻 ${movieName} 🌼\n\n 🎉The provided subtitle corresponds to: ${result.descriptionText}\n\nSubtitles are sourced from cineru.lk.💕`;
 
-                // Send poster image with caption
-                await conn.sendImage(from, result.posterUrl, responseText);
+                    // Send poster image with caption
+                    await conn.sendImage(from, result.posterUrl, responseText);
 
-                // Get the download link and send it
-                const downloadLink = await getDownloadLink(movie.url);
-                if (downloadLink) {
-                    await reply(`Download Link: ${downloadLink}`);
+                    // Get the download link and send it
+                    const downloadLink = await getDownloadLink(movie.url);
+                    if (downloadLink) {
+                        await reply(`Download Link: ${downloadLink}`);
+                    } else {
+                        await reply("❌ No download link found. Please try again later.");
+                    }
                 } else {
-                    await reply("❌ No download link found. Please try again later.");
+                    await reply("❌ Poster image not found.");
                 }
-            } else {
-                await reply("❌ Poster image not found.");
+            } catch (fetchError) {
+                console.error('Fetch Error:', fetchError);
+                await reply("❌ Failed to fetch movie details. Please try again.");
             }
         } else {
             await reply("❌ Invalid movie index. Please try again.");
         }
     } catch (e) {
         console.log(e);
-        reply(`Error: ${e}`);
+        reply(`Error: ${e.message}`);
     }
 });
 
 // Extract titles from search results HTML
 function extractTitles(html) {
-    const regex = /<h2 class="post-box-title">\s*<a href="([^"]+)"[^>]*>(.*?)<\/a>/g;
-    const matches = [...html.matchAll(regex)];
-    return matches.map((match) => ({
-        url: match[1],
-        title: match[2].replace(/Subtitles.*/, "Subtitles").trim(),
-    }));
+    const $ = cheerio.load(html);
+    const results = [];
+
+    $('h2.post-box-title a').each((index, element) => {
+        const url = $(element).attr('href');
+        const title = $(element).text().replace(/Subtitles.*/, "Subtitles").trim();
+        
+        if (url && title) {
+            results.push({ url, title });
+        }
+    });
+
+    return results;
 }
 
 // Sanitize movie titles
@@ -97,18 +118,17 @@ function sanitizeTitle(title) {
 // Get movie poster URL
 async function getPosterImageUrl(pageUrl) {
     try {
-        const response = await fetch(pageUrl);
-        const text = await response.text();
+        const { data: text } = await axios.get(pageUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
 
-        const regexImage = /<img[^>]+class="attachment-slider size-slider wp-post-image"[^>]+src="(https:\/\/[^"]+)"/;
-        const regexDescriptionText = /<div[^>]+class="neon"[^>]*>(.*?)<\/div>/;
+        const $ = cheerio.load(text);
+        const posterUrl = $('img.attachment-slider.size-slider.wp-post-image').attr('src');
+        const descriptionText = $('.neon').text().trim() || "Description Not Found";
 
-        const matchImage = text.match(regexImage);
-        const matchDescriptionText = text.match(regexDescriptionText);
-
-        if (matchImage && matchImage[1]) {
-            const posterUrl = matchImage[1];
-            const descriptionText = matchDescriptionText ? matchDescriptionText[1] : "Description Not Found";
+        if (posterUrl) {
             return { posterUrl, descriptionText };
         } else {
             return null;
@@ -122,18 +142,16 @@ async function getPosterImageUrl(pageUrl) {
 // Get download link
 async function getDownloadLink(pageUrl) {
     try {
-        const response = await fetch(pageUrl);
-        const text = await response.text();
+        const { data: text } = await axios.get(pageUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
 
-        const regexDownloadLink = /<a[^>]+id="btn-download"[^>]+data-link="([^"]+)"/;
+        const $ = cheerio.load(text);
+        const downloadLink = $('#btn-download').attr('data-link');
 
-        const match = text.match(regexDownloadLink);
-
-        if (match && match[1]) {
-            return match[1];
-        } else {
-            return null;
-        }
+        return downloadLink || null;
     } catch (error) {
         console.error("Error fetching download link:", error);
         return null;
@@ -143,20 +161,20 @@ async function getDownloadLink(pageUrl) {
 // Get movie name
 async function getMovieName(pageUrl) {
     try {
-        const response = await fetch(pageUrl);
-        const text = await response.text();
+        const { data: text } = await axios.get(pageUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
 
-        const regexMovieName = /<h1 class="name post-title entry-title"><span itemprop="name">([^<]+)<\/span><\/h1>/;
+        const $ = cheerio.load(text);
+        const movieName = $('h1.name.post-title.entry-title span[itemprop="name"]').text().trim();
 
-        const match = text.match(regexMovieName);
-
-        if (match && match[1]) {
-            return match[1].trim();
-        } else {
-            return "Unknown Movie";
-        }
+        return movieName || "Unknown Movie";
     } catch (error) {
         console.error("Error fetching movie name:", error);
         return "Unknown Movie";
     }
 }
+
+module.exports = { cmd };
