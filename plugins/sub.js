@@ -1,134 +1,91 @@
-const { cmd, commands } = require('../command');
-const axios = require('axios');
-const cheerio = require('cheerio');
-
-// Global cache to store search results
-const searchResultsCache = {};
+const {cmd, commands} = require('../command');
+const {fetchJson} = require('../lib/functions');
 
 cmd({
     pattern: "sub",
     desc: "cineru.lk sub download",
     category: "main",
     filename: __filename
-}, async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, reply }) => {
+},
+async (conn, mek, m, {from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply}) => {
     try {
-        // Perform search based on user query
-        const keyword = q.trim();
-        if (!keyword) {
-            return reply("🔍 Please provide a search term for subtitles.");
+        // Step 1: Search for movies based on the user query
+        const searchUrl = `https://cineru.lk/?s=${encodeURIComponent(q)}`;
+        const searchResponse = await fetch(searchUrl);
+
+        if (!searchResponse.ok) {
+            return reply("❌ සෙවුම් කාර්යය අසාර්ථකයි. නැවත උත්සහා කරන්න.");
         }
 
-        try {
-            const searchUrl = `https://cineru.lk/?s=${encodeURIComponent(keyword)}`;
-            const { data: searchHtml } = await axios.get(searchUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
-            });
+        const searchHtml = await searchResponse.text();
+        const results = extractTitles(searchHtml);
 
-            const results = extractTitles(searchHtml);
-
-            if (results.length > 0) {
-                const numberedList = results.map((item, index) => `${index + 1}. ${sanitizeTitle(item.title)}`).join("\n");
-                await reply(`🎬 Search results:\n\n${numberedList}\n\nPlease reply with the movie number to get the subtitle download link.`);
-                
-                // Store results for later access
-                searchResultsCache[from] = results;
-            } else {
-                await reply("⚠️ No results found for your search.");
-            }
-        } catch (searchError) {
-            console.error('Search Error:', searchError);
-            await reply("❌ Search failed. Please try again.");
+        if (results.length === 0) {
+            return reply("⚠️ සෙවුම් සඳහා ප්‍රතිඵල කිසිවක් නොමැත.");
         }
-    } catch (e) {
-        console.log(e);
-        reply(`Error: ${e.message}`);
-    }
-});
 
-// Handle movie index selection
-cmd({
-    pattern: "sub [0-9]+",
-    desc: "Download subtitle from cineru.lk",
-    category: "main",
-    filename: __filename
-}, async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, reply }) => {
-    try {
+        // Step 2: Display search results
+        const numberedList = results.map((item, index) => `${index + 1}. ${sanitizeTitle(item.title)}`).join("\n");
+        await reply(`🎬 සෙවුම් ප්‍රතිඵල:\n\n${numberedList}\n\nඋපසිරුසි ලබාගැනීම සඳහා චිත්‍රපට අංකය ලබාදෙන්න`);
+
+        // Step 3: Handle user selection
         const movieIndex = parseInt(args[0], 10) - 1;
+        if (results[movieIndex]) {
+            const movie = results[movieIndex];
+            const result = await getPosterImageUrl(movie.url);
 
-        if (searchResultsCache[from] && searchResultsCache[from][movieIndex]) {
-            const movie = searchResultsCache[from][movieIndex];
-            
-            try {
-                const result = await getPosterImageUrl(movie.url);
+            if (!result) {
+                return reply("❌ පොස්ටර් එක හමුනොවීය, උදව් සඳහා /help බාවිතා කරන්න");
+            }
 
-                if (result && result.posterUrl) {
-                    const movieName = await getMovieName(movie.url);
-                    const responseText = `🌻 ${movieName} 🌼\n\n 🎉The provided subtitle corresponds to: ${result.descriptionText}\n\nSubtitles are sourced from cineru.lk.💕`;
+            const movieName = await getMovieName(movie.url);
+            const responseText = `🌻 ${movieName} 🌼 \n\n 🎉මෙම ලබා දී ඇති උපසිරැසිය ${result.descriptionText} පිටපත් සඳහා ගැලපේ \n\n  උපසිරසි පිටපත cineru.lk වෙබ් අඩවිය මගින් ලබා දී ඇත.💕 \n\n\n 𝐂𝐢𝐧𝐞𝐌𝐚𝐭𝐞 𝐁𝐨𝐭 - 𝟐𝟎𝟐𝟒`;
 
-                    // Send poster image with caption
-                    await conn.sendImage(from, result.posterUrl, responseText);
-
-                    // Get the download link and send it
-                    const downloadLink = await getDownloadLink(movie.url);
-                    if (downloadLink) {
-                        await reply(`Download Link: ${downloadLink}`);
-                    } else {
-                        await reply("❌ No download link found. Please try again later.");
-                    }
-                } else {
-                    await reply("❌ Poster image not found.");
-                }
-            } catch (fetchError) {
-                console.error('Fetch Error:', fetchError);
-                await reply("❌ Failed to fetch movie details. Please try again.");
+            const downloadLink = await getDownloadLink(movie.url);
+            if (downloadLink) {
+                await reply(responseText);
+                // Send the download link as a document
+                await conn.sendMessage(from, {document: {url: downloadLink}, fileName: `${movieName} - sub.zip`}, {quoted: mek});
+            } else {
+                await reply("❌ බාගත කිරීමේ ලින්ක් එක හමු නොවීය, උදව් සඳහා /help බාවිතා කරන්න");
             }
         } else {
-            await reply("❌ Invalid movie index. Please try again.");
+            return reply("❌ ඔබ ලබාදුන් අංකය වැරදී, කරුණාකර නැවත උත්සහ කරන්න");
         }
     } catch (e) {
         console.log(e);
-        reply(`Error: ${e.message}`);
+        return reply(`❌ දෝෂයක් සිදුවූයේ: ${e}`);
     }
 });
 
-// Extract titles from search results HTML
+// Helper functions to extract titles, poster image, download link, and movie name
 function extractTitles(html) {
-    const $ = cheerio.load(html);
-    const results = [];
-
-    $('h2.post-box-title a').each((index, element) => {
-        const url = $(element).attr('href');
-        const title = $(element).text().replace(/Subtitles.*/, "Subtitles").trim();
-        
-        if (url && title) {
-            results.push({ url, title });
-        }
-    });
-
-    return results;
+    const regex = /<h2 class="post-box-title">\s*<a href="([^"]+)"[^>]*>(.*?)<\/a>/g;
+    const matches = [...html.matchAll(regex)];
+    return matches.map((match) => ({
+        url: match[1],
+        title: match[2].replace(/Subtitles.*/, "Subtitles").trim(),
+    }));
 }
 
-// Sanitize movie titles
 function sanitizeTitle(title) {
     return title.replace(/[^A-Za-z0-9\s]/g, "").trim();
 }
 
-// Get movie poster URL
 async function getPosterImageUrl(pageUrl) {
     try {
-        const { data: text } = await axios.get(pageUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
+        const response = await fetch(pageUrl);
+        const text = await response.text();
 
-        const $ = cheerio.load(text);
-        const posterUrl = $('img.attachment-slider.size-slider.wp-post-image').attr('src');
-        const descriptionText = $('.neon').text().trim() || "Description Not Found";
+        const regexImage = /<img[^>]+class="attachment-slider size-slider wp-post-image"[^>]+src="(https:\/\/[^"]+)"/;
+        const regexDescriptionText = /<div[^>]+class="neon"[^>]*>(.*?)<\/div>/;
 
-        if (posterUrl) {
+        const matchImage = text.match(regexImage);
+        const matchDescriptionText = text.match(regexDescriptionText);
+
+        if (matchImage && matchImage[1]) {
+            const posterUrl = matchImage[1];
+            const descriptionText = matchDescriptionText ? matchDescriptionText[1] : "Description Not Found";
             return { posterUrl, descriptionText };
         } else {
             return null;
@@ -139,42 +96,47 @@ async function getPosterImageUrl(pageUrl) {
     }
 }
 
-// Get download link
 async function getDownloadLink(pageUrl) {
     try {
-        const { data: text } = await axios.get(pageUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
+        const response = await fetch(pageUrl);
+        const text = await response.text();
 
-        const $ = cheerio.load(text);
-        const downloadLink = $('#btn-download').attr('data-link');
+        const regexDownloadLink = /<a[^>]+id="btn-download"[^>]+data-link="([^"]+)"/;
 
-        return downloadLink || null;
+        const match = text.match(regexDownloadLink);
+
+        if (match && match[1]) {
+            return match[1];
+        } else {
+            return null;
+        }
     } catch (error) {
         console.error("Error fetching download link:", error);
         return null;
     }
 }
 
-// Get movie name
 async function getMovieName(pageUrl) {
     try {
-        const { data: text } = await axios.get(pageUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        const response = await fetch(pageUrl);
+        const text = await response.text();
+
+        const regexMovieName = /<h1 class="name post-title entry-title"><span itemprop="name">([^<]+)<\/span><\/h1>/;
+
+        const match = text.match(regexMovieName);
+
+        if (match && match[1]) {
+            let movieName = match[1].trim();
+            const subtitleIndex = movieName.indexOf("Sinhala Subtitles");
+            if (subtitleIndex !== -1) {
+                movieName = movieName.substring(0, subtitleIndex + "Sinhala Subtitles".length);
             }
-        });
-
-        const $ = cheerio.load(text);
-        const movieName = $('h1.name.post-title.entry-title span[itemprop="name"]').text().trim();
-
-        return movieName || "Unknown Movie";
+            return movieName;
+        } else {
+            return "Unknown Movie";
+        }
     } catch (error) {
         console.error("Error fetching movie name:", error);
         return "Unknown Movie";
     }
 }
-
-module.exports = { cmd };
