@@ -2,42 +2,50 @@ const config = require('../config')
 const {cmd , commands} = require('../command')
 const { sinhalaSub } = require("mrnima-moviedl");
 
-cmd({
-    pattern: "movie",
-    desc: "Search and download Sinhala Subtitle Movies/TV Shows",
-    category: "main",
-    filename: __filename,
-}, async (conn, mek, m, {
-    args, reply, command
-}) => {
-    try {
-        // SinhalaSub API Initialize
-        const movieAPI = await sinhalaSub();
-        
-        // Command Structure
-        if (!args.length) {
-            return reply(`⚠️ කරුණාකර චිත්‍රපටය බාගත කිරීමට නමක් ලබාදෙන්න \n\n *උදා:- .movie jawan*`);
+cmd(
+    {
+        pattern: "movie", // Command pattern එක
+        desc: "Search movies with Sinhala subtitles", // Command විස්තරය
+        category: "main", // Command category එක
+        filename: __filename, // Command file එකේ නම
+    },
+    async (
+        conn,
+        mek,
+        m,
+        {
+            from,
+            quoted,
+            args,
+            q,
+            isCmd,
+            reply, // Reply message sending function
         }
+    ) => {
+        try {
+            if (!q) {
+                return reply("කරුණාකර චිත්‍රපටයේ නමක් ලබාදෙන්න! 🎥"); // Prompt for movie name
+            }
 
-        const query = args.join(" ");
-        const result = await movieAPI.search(query);
+            const movie = await sinhalaSub(); // SinhalaSub API එක initialize කරන්න
+            const result = await movie.search(q); // Movie එක සෙවීම
 
-        if (!result.result || result.result.length === 0) {
-            return reply(`🛑 "${query}" සඳහා කිසිවක් සොයාගත නොහැකි විය.`);
+            if (!result.status || !result.result.length) {
+                return reply("සෙවීමෙන් ගැලපෙන කිසිවක් හමු නොවිනි! 😞");
+            }
+
+            const movies = result.result
+                .map(
+                    (item, index) =>
+                        `*${index + 1}. ${item.title}*\n🔗 Link: ${item.link}\n📷 Image: ${item.img}\n`
+                )
+                .join("\n");
+
+            reply(`🎬 *Movie Search Results* 🎬\n\n${movies}`); // Search results display කරන්න
+        } catch (error) {
+            console.error("Error:", error);
+            reply("දෝෂයක් ඇතිවිය! කරුණාකර පසුව උත්සහ කරන්න.");
         }
-
-        let message = `🎬 *${query} සඳහා සොයාගත් ප්‍රතිඵල*: \n\n`;
-
-        result.result.forEach((item, index) => {
-            message += `*${index + 1}. ${item.title}*\n`;
-            message += `🖼️ ${item.img}\n`;
-            message += `🔗 [Link](${item.link})\n`;
-            message += `\n`;
-        });
-
-        reply(message);
-    } catch (error) {
-        console.error(error);
-        reply(`⚠️ දෝෂයක් ඇතිවිය: ${error.message}`);
     }
-});
+);
+
