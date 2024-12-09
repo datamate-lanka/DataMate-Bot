@@ -3,31 +3,30 @@ const { cmd, commands } = require('../command');
 const { fetchJson } = require('../lib/functions');
 
 cmd({
-  pattern: "sub",
-  desc: "Download subtitles from cineru.lk",
-  category: "main",
-  filename: __filename
+    pattern: "sub",
+    desc: "Search for subtitles on cineru.lk",
+    category: "main",
+    filename: __filename
 },
-async(conn, mek, m, { from, quoted, body, isCmd, command, args, q, reply }) => {
-  try {
+async (conn, mek, m, { args, q, reply }) => {
     if (!q) {
-      return reply("🔍 Please provide a movie name to search for subtitles.");
+        return reply("🔍 Please provide a search keyword.");
     }
 
-    const apiUrl = `https://cinerulk-fetch.mahagedara-co.workers.dev/?sub=${encodeURIComponent(q)}`;
-    const response = await fetchJson(apiUrl);
+    try {
+        const apiUrl = `https://cinerulk-fetch.mahagedara-co.workers.dev/?sub=${encodeURIComponent(q)}`;
+        const response = await fetchJson(apiUrl);
 
-    if (response && response.status === "success ✅" && response.data.length > 0) {
-      let message = "🎬 **Movie List** 🎬\n";
-      response.data.forEach((item, index) => {
-        message += `${index + 1}. ${item.title}\n🔗 ${item.url}\n\n`;
-      });
-      return reply(message);
-    } else {
-      return reply("⚠️ No subtitles found for your query.");
+        if (response.status === "success") {
+            const message = "🎬 **Movie List** 🎬\n" +
+                response.data.map((item, index) => `${index + 1}. ${item.title}\nURL: ${item.url}\n`).join('\n');
+            return reply(message);
+        } else {
+            return reply(`⚠️ ${response.message}`);
+        }
+    } catch (err) {
+        console.error(err);
+        return reply("❌ An error occurred while fetching subtitles.");
     }
-  } catch (error) {
-    console.error(error);
-    return reply("❌ Error fetching subtitles. Please try again.");
-  }
 });
+
