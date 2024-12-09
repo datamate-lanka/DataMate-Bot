@@ -1,9 +1,9 @@
 const { cmd } = require('../command');
-const { fetchJson } = require('../lib/functions');
+const puppeteer = require('puppeteer');
 
 cmd({
   pattern: "sub",
-  desc: "Search for subtitles on cineru.lk",
+  desc: "Search for movie subtitles on cineru.lk",
   category: "main",
   filename: __filename
 },
@@ -13,27 +13,40 @@ async (conn, mek, m, { q, reply }) => {
   }
 
   try {
-    const apiUrl = `https://cinerulk-fetch.mahagedara-co.workers.dev/?sub=${encodeURIComponent(q)}`;
-    console.log(`Fetching data from: ${apiUrl}`);
-    
-    // Fetch JSON from the worker
-    const response = await fetchJson(apiUrl);
-    console.log("API Response:", response);
+    const searchUrl = `https://cineru.lk/?s=${encodeURIComponent(q)}`;
+    console.log(`Searching on: ${searchUrl}`);
 
-    // Check if the response status is success
-    if (response.status === "success" && Array.isArray(response.data)) {
+    // Launch Puppeteer
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+
+    // Extract movie titles
+    const movieList = await page.evaluate(() => {
+      const titles = [];
+      document.querySelectorAll('.post-box-title').forEach(el => {
+        titles.push({
+          title: el.textContent.trim(),
+          url: el.querySelector('a')?.href || null
+        });
+      });
+      return titles;
+    });
+
+    await browser.close();
+
+    // Check if movies are found
+    if (movieList.length > 0) {
       const message = "🎬 **Movie List** 🎬\n" +
-        response.data
-          .map((item, index) => `${index + 1}. ${item.title}\nURL: ${item.url}`)
+        movieList
+          .map((item, index) => `${index + 1}. ${item.title}\nURL: ${item.url || 'N/A'}`)
           .join('\n');
       return reply(message);
-    } else if (response.status === "error") {
-      return reply(`⚠️ ${response.message}`);
     } else {
-      return reply("❌ Unexpected response from the API.");
+      return reply("⚠️ No movies found for your search query.");
     }
   } catch (err) {
     console.error("Error fetching data:", err);
-    return reply("❌ An error occurred while fetching subtitles. Please try again later.");
+    return reply("❌ An error occurred while fetching movie data. Please try again later.");
   }
 });
