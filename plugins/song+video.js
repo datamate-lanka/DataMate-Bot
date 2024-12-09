@@ -32,7 +32,6 @@ let downloadUrl = down.dl_url
 
 // send audio + document message
 await conn.sendMessage(from,{audio: {url:downloadUrl},mimetype:"audio/mpeg"},{quoted:mek});
-await conn.sendMessage(from,{document: {url:downloadUrl},mimetype:"audio/mpeg",fileName:data.title + "-CineMateBot.mp3",caption:"> CineMate Bot 2024"},{quoted:mek})
 
 
 
