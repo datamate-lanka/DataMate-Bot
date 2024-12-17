@@ -17,7 +17,6 @@
     "express": "latest",
     "axios": "^1.2.5",
     "file_size_url": "^1.0.4",
-    "fs-extra": "^11.1.0",
     "path": "^0.12.7",
     "node-fetch": "^2.6.1",
     "megajs": "^1.1.0",
