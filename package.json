@@ -27,6 +27,6 @@
     "yt-search":"2.12.1",
     "api-dylux":"1.8.5",
     "fs-extra":"11.2.0",
-    "subz.lk":"2.0.2"
+    "@sl-code-lords/esana-news":"1.1.0"
   }
 }
