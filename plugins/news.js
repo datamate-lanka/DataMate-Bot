@@ -1,3 +1,4 @@
+const config = require('../config')
 const Esana = require('@sl-code-lords/esana-news');
 const { cmd, commands } = require('../command');
 
